@@ -13,12 +13,11 @@ void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
 
 int main(int argc, char *argv[]) {
-  int t = 0, c = 0, N = 0, option, w;
+  int t = 0, c = 0, N = 0, option, j;
   float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt;
   double t1_p, t2_p;
   char buffer[256], *input_file_name = NULL, *output_file_name = NULL; // string de largo 256 chars
   
-  t1_p = omp_get_wtime();
   while ((option = getopt(argc, argv, "i:o:d:N:c:t:")) != -1) {
     switch (option) {
       case 'i':
@@ -60,7 +59,9 @@ int main(int argc, char *argv[]) {
   fi = calloc(N * N, sizeof(float));
   wt = calloc(N * N, sizeof(float));
 
-  #pragma omp parallel shared(absfr, absfi, abswt) firstprivate(fr, fi, wt) private(w) num_threads(t)
+  t1_p = omp_get_wtime();
+  omp_set_nested(1);
+  #pragma omp parallel shared(absfr, absfi, abswt, j) firstprivate(fr, fi, wt)
     {
     #pragma omp single
     {
@@ -70,19 +71,19 @@ int main(int argc, char *argv[]) {
       #pragma omp task untied shared(file) private(a) shared(cont)
       while(feof(file) == 0) {
         float* vis = calloc(c * 6, sizeof(float));
-        #pragma omp critical
+        #pragma omp critical // SC
         for (int j = 0; j < c; j++) {
-          if(feof(file) != 0){     // Si se llegó al final del archivo mientras se esta leyendo lineas del chunk, se sale del ciclo
+          if(feof(file) != 0){
             break;
           }
-          fgets(buffer,sizeof(buffer),file);
           int row = j * 6;
+          fgets(buffer,sizeof(buffer),file);
           sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[row], &vis[row+1], &vis[row+2], &vis[row+3], &vis[row+4], &vis[row+5]);
           if(cont % 500000 == 0){
             printf("Reading line: %d\n", cont);
           }
           cont++;
-        }
+        }  // SC
         if(vis[0] != 0.0)
         for(a = 0; a < c; a++){
           int row = a * 6;
@@ -109,19 +110,19 @@ int main(int argc, char *argv[]) {
         }
       } // while archivo
     } // for tasks
-    #pragma omp taskwait
-    #pragma omp critical
-    for(int i = 0;i < N * N; i++){
-      absfr[i] += fr[i];
-      absfi[i] += fi[i];
-      abswt[i] += wt[i];
-    }
   } // single
+  #pragma omp taskwait
   #pragma omp for
-  for (w = 0; w < N * N; w++)
-    if(abswt[w]!=0){
-      absfr[w] = absfr[w] / abswt[w];
-      absfi[w] = absfi[w] / abswt[w];
+  for(int i = 0; i < N * N; i++){
+    absfr[i] += fr[i];
+    absfi[i] += fi[i];
+    abswt[i] += wt[i];
+  }
+  #pragma omp for
+  for (j = 0; j < N * N; j++)
+    if(abswt[j]!=0){ // /0: -inf
+      absfr[j] = absfr[j] / abswt[j];
+      absfi[j] = absfi[j] / abswt[j];
     }
   } // Parallel
   t2_p = omp_get_wtime();
@@ -139,7 +140,7 @@ int main(int argc, char *argv[]) {
   wt = calloc(N * N, sizeof(float));
 
   t1_p = omp_get_wtime();
-  #pragma omp parallel shared(absfr, absfi, abswt) firstprivate(fr, fi, wt) private(w) num_threads(t)
+  #pragma omp parallel shared(absfr, absfi, abswt, j) firstprivate(fr, fi, wt) num_threads(t)
     {
     #pragma omp single
     {
@@ -193,10 +194,10 @@ int main(int argc, char *argv[]) {
     } // for tasks
   } // single
   #pragma omp for
-  for (w = 0; w < N * N; w++)
-    if(abswt[w]!=0){
-      absfr[w] = absfr[w] / abswt[w];
-      absfi[w] = absfi[w] / abswt[w];
+  for (j = 0; j < N * N; j++)
+    if(abswt[j]!=0){
+      absfr[j] = absfr[j] / abswt[j];
+      absfi[j] = absfi[j] / abswt[j];
     }
   } // Parallel  
   t2_p = omp_get_wtime();
