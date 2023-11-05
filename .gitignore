@@ -1,9 +1,4 @@
 hltau_completo_uv.csv
 hltau_test.csv
 gridding
-datosgrideados_privatei.raw
-datosgrideados_privater.raw
-datosgrideados_sharedi.raw
-datosgrideados_sharedr.raw
-datosgrideados_seci.raw
-datosgrideados_secr.raw
+*.raw
