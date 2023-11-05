@@ -53,14 +53,13 @@ int main(int argc, char *argv[]) {
     cont++;
   }
   for (int w = 0; w < N * N; w++){
-    if(wt[w]!=0){
+    if(wt[w] != 0){
       fr[w] = fr[w] / wt[w];
       fi[w] = fi[w] / wt[w];
     }
   }
   end_s = clock();
-
-  t_s = ((double)(end_s - start_s)) / (double)CLOCKS_PER_SEC;
+  t_s = ((double)(end_s - start_s)) / CLOCKS_PER_SEC;
 
   printf("Secuential time %f[s]\n", t_s);
   write_file("datosgrideados_secr.raw", fr, N * N);

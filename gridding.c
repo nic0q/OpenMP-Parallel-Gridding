@@ -9,6 +9,7 @@
 #include <math.h>
 const float SPEED_OF_LIGHT = 299792458;
 float arcsec_to_rad(float deg);
+int grid(int row, float* vis, float deltaU, float deltaV, int N);
 void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
 
@@ -60,13 +61,12 @@ int main(int argc, char *argv[]) {
   wt = calloc(N * N, sizeof(float));
 
   t1_p = omp_get_wtime();
-  omp_set_nested(1);
   #pragma omp parallel shared(absfr, absfi, abswt, j) firstprivate(fr, fi, wt)
     {
     #pragma omp single
     {
-    float uk , vk, vr, vi, wk, fq, fqspeed;
-    int ik, jk, index, cont = 0, a = 0;
+    float vr, vi, wk;
+    int cont = 0, a = 0, row, index;
     for (int i = 0; i < t; i++){
       #pragma omp task untied shared(file) private(a) shared(cont)
       while(feof(file) == 0) {
@@ -76,9 +76,9 @@ int main(int argc, char *argv[]) {
           if(feof(file) != 0){
             break;
           }
-          int row = j * 6;
+          int pos = j * 6;
           fgets(buffer,sizeof(buffer),file);
-          sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[row], &vis[row+1], &vis[row+2], &vis[row+3], &vis[row+4], &vis[row+5]);
+          sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[pos], &vis[pos+1], &vis[pos+2], &vis[pos+3], &vis[pos+4], &vis[pos+5]);
           if(cont % 500000 == 0){
             printf("Reading line: %d\n", cont);
           }
@@ -86,24 +86,11 @@ int main(int argc, char *argv[]) {
         }  // SC
         if(vis[0] != 0.0)
         for(a = 0; a < c; a++){
-          int row = a * 6;
+          vr = vis[a * 6 + 2]; // parte real
+          vi = vis[a * 6 + 3]; // parte im
+          wk = vis[a * 6 + 4]; // peso
+          index = grid(a, vis, deltaU, deltaV, N);
 
-          uk = vis[row];
-          vk = vis[row + 1];
-          vr = vis[row + 2]; // parte real
-          vi = vis[row + 3]; // parte im
-          wk = vis[row + 4]; // peso
-          fq = vis[row + 5];
-
-          fqspeed = fq / SPEED_OF_LIGHT;
-          uk = uk * fqspeed; // uk
-          vk = vk * fqspeed; // vk
-
-          ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
-          jk = round(vk / deltaV) + (N / 2);
-
-          index = ik * N + jk;
-          
           fr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
           fi[index] += wk * vi;
           wt[index] += wk;
@@ -120,7 +107,7 @@ int main(int argc, char *argv[]) {
   }
   #pragma omp for
   for (j = 0; j < N * N; j++)
-    if(abswt[j]!=0){ // /0: -inf
+    if(abswt[j] != 0){ // /0: -inf
       absfr[j] = absfr[j] / abswt[j];
       absfi[j] = absfi[j] / abswt[j];
     }
@@ -156,8 +143,8 @@ int main(int argc, char *argv[]) {
             break;
           }
           fgets(buffer,sizeof(buffer),file2);
-          int row = j * 6;
-          sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[row], &vis[row+1], &vis[row+2], &vis[row+3], &vis[row+4], &vis[row+5]);
+          int pos = j * 6;
+          sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[pos], &vis[pos+1], &vis[pos+2], &vis[pos+3], &vis[pos+4], &vis[pos+5]);
           if(cont % 500000 == 0){
             printf("Reading line: %d\n", cont);
           }
@@ -165,24 +152,10 @@ int main(int argc, char *argv[]) {
         }
         if(vis[0] != 0.0)
         for(a = 0; a < c; a++){
-          int row = a * 6;
-
-          uk = vis[row];
-          vk = vis[row + 1];
-          vr = vis[row + 2]; // parte real
-          vi = vis[row + 3]; // parte im
-          wk = vis[row + 4]; // peso
-          fq = vis[row + 5];
-
-          fqspeed = fq / SPEED_OF_LIGHT;
-          uk = uk * fqspeed; // uk
-          vk = vk * fqspeed; // vk
-
-          ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
-          jk = round(vk / deltaV) + (N / 2);
-
-          index = ik * N + jk;
-          
+          vr = vis[a * 6 + 2]; // parte real
+          vi = vis[a * 6 + 3]; // parte im
+          wk = vis[a * 6 + 4]; // peso
+          index = grid(a, vis, deltaU, deltaV, N);
           #pragma omp critical
           {
             absfr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
@@ -205,6 +178,25 @@ int main(int argc, char *argv[]) {
 
   write_file("datosgrideados_sharedr.raw", absfr, N * N);
   write_file("datosgrideados_sharedi.raw", absfi, N * N);
+}
+
+int grid(int row, float* vis, float deltaU, float deltaV, int N){
+  int pos = row * 6, index, ik, jk;
+  float uk, vk, vr, vi, wk, fq, fqspeed;
+  uk = vis[pos];
+  vk = vis[pos + 1];
+  vr = vis[pos + 2]; // parte real
+  vi = vis[pos + 3]; // parte im
+  wk = vis[pos + 4]; // peso
+  fq = vis[pos + 5];
+  fqspeed = fq / SPEED_OF_LIGHT;
+  uk = uk * fqspeed; // uk
+  vk = vk * fqspeed; // vk
+
+  ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
+  jk = round(vk / deltaV) + (N / 2);
+
+  return ik * N + jk;
 }
 float arcsec_to_rad(float deg){  // arcseconds to radians
   return deg * M_PI / (180 * 3600);
