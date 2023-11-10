@@ -1,12 +1,12 @@
-// gcc -fopenmp tasks.c -o tasks
+#include <getopt.h>
+#include <math.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
 #include <unistd.h>
 #define _USE_MATH_DEFINES
-#include <math.h>
+
 const float SPEED_OF_LIGHT = 299792458;
 float arcsec_to_rad(float deg);
 int grid(int row, float* vis, float deltaU, float deltaV, int N);
@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
           vr = vis[it * 6 + 2]; // parte real
           vi = vis[it * 6 + 3]; // parte im
           wk = vis[it * 6 + 4]; // peso
+
           index = grid(it, vis, deltaU, deltaV, N);
 
           fr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
@@ -155,7 +156,9 @@ int main(int argc, char *argv[]) {
           vr = vis[it * 6 + 2]; // parte real
           vi = vis[it * 6 + 3]; // parte im
           wk = vis[it * 6 + 4]; // peso
+
           index = grid(it, vis, deltaU, deltaV, N);
+
           #pragma omp critical
           {
             absfr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
@@ -213,10 +216,10 @@ void write_file(char* archive_name, float* data, int dim) {
   fclose(file);
 }
 FILE* open_file(char* file_name) {
-    FILE* file = fopen(file_name, "r");
-    if (file == NULL) {
-        perror("There was an error opening the file");
-        return NULL;
-    }
-    return file;
+  FILE* file = fopen(file_name, "r");
+  if (file == NULL) {
+    perror("There was an error opening the file");
+    return NULL;
+  }
+  return file;
 }
