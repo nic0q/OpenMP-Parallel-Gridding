@@ -169,6 +169,7 @@ int main(int argc, char *argv[]) {
       } // while archivo
     } // for tasks
   } // single
+  #pragma omp taskwait
   #pragma omp for
   for (j = 0; j < N * N; j++)
     if(abswt[j]!=0){
