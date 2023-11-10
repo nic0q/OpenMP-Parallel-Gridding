@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
   int t = 0, c = 0, N = 0, option, j;
   float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt;
   double t1_p, t2_p;
-  char buffer[256], *input_file_name = NULL, *output_file_name = NULL; // string de largo 256 chars
+  char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
   
   while ((option = getopt(argc, argv, "i:o:d:N:c:t:")) != -1) {
     switch (option) {
@@ -66,9 +66,9 @@ int main(int argc, char *argv[]) {
     #pragma omp single
     {
     float vr, vi, wk;
-    int cont = 0, a = 0, row, index;
+    int cont = 0, it = 0, row, index, pos;
     for (int i = 0; i < t; i++){
-      #pragma omp task untied shared(file) private(a) shared(cont)
+      #pragma omp task untied shared(file) private(it) shared(cont)
       while(feof(file) == 0) {
         float* vis = calloc(c * 6, sizeof(float));
         #pragma omp critical // SC
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
           if(feof(file) != 0){
             break;
           }
-          int pos = j * 6;
+          pos = j * 6;
           fgets(buffer,sizeof(buffer),file);
           sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[pos], &vis[pos+1], &vis[pos+2], &vis[pos+3], &vis[pos+4], &vis[pos+5]);
           if(cont % 500000 == 0){
@@ -85,11 +85,11 @@ int main(int argc, char *argv[]) {
           cont++;
         }  // SC
         if(vis[0] != 0.0)
-        for(a = 0; a < c; a++){
-          vr = vis[a * 6 + 2]; // parte real
-          vi = vis[a * 6 + 3]; // parte im
-          wk = vis[a * 6 + 4]; // peso
-          index = grid(a, vis, deltaU, deltaV, N);
+        for(it = 0; it < c; it++){
+          vr = vis[it * 6 + 2]; // parte real
+          vi = vis[it * 6 + 3]; // parte im
+          wk = vis[it * 6 + 4]; // peso
+          index = grid(it, vis, deltaU, deltaV, N);
 
           fr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
           fi[index] += wk * vi;
@@ -132,9 +132,9 @@ int main(int argc, char *argv[]) {
     #pragma omp single
     {
     float uk , vk, vr, vi, wk, fq, fqspeed;
-    int ik, jk, index, cont = 0, a = 0;
+    int ik, jk, index, cont = 0, it = 0, pos;
     for (int i = 0; i < t; i++){
-      #pragma omp task untied shared(file2) private(a) shared(cont)
+      #pragma omp task untied shared(file2) private(it) shared(cont)
       while(feof(file2) == 0) {
         float* vis = calloc(c * 6, sizeof(float));
         #pragma omp critical
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
             break;
           }
           fgets(buffer,sizeof(buffer),file2);
-          int pos = j * 6;
+          pos = j * 6;
           sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[pos], &vis[pos+1], &vis[pos+2], &vis[pos+3], &vis[pos+4], &vis[pos+5]);
           if(cont % 500000 == 0){
             printf("Reading line: %d\n", cont);
@@ -151,11 +151,11 @@ int main(int argc, char *argv[]) {
           cont++;
         }
         if(vis[0] != 0.0)
-        for(a = 0; a < c; a++){
-          vr = vis[a * 6 + 2]; // parte real
-          vi = vis[a * 6 + 3]; // parte im
-          wk = vis[a * 6 + 4]; // peso
-          index = grid(a, vis, deltaU, deltaV, N);
+        for(it = 0; it < c; it++){
+          vr = vis[it * 6 + 2]; // parte real
+          vi = vis[it * 6 + 3]; // parte im
+          wk = vis[it * 6 + 4]; // peso
+          index = grid(it, vis, deltaU, deltaV, N);
           #pragma omp critical
           {
             absfr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
@@ -182,11 +182,9 @@ int main(int argc, char *argv[]) {
 
 int grid(int row, float* vis, float deltaU, float deltaV, int N){
   int pos = row * 6, index, ik, jk;
-  float uk, vk, vr, vi, wk, fq, fqspeed;
+  float uk, vk, wk, fq, fqspeed;
   uk = vis[pos];
   vk = vis[pos + 1];
-  vr = vis[pos + 2]; // parte real
-  vi = vis[pos + 3]; // parte im
   wk = vis[pos + 4]; // peso
   fq = vis[pos + 5];
   fqspeed = fq / SPEED_OF_LIGHT;

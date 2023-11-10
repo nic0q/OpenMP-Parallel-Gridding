@@ -10,5 +10,5 @@ clean:
 	rm -f *.o *.exe gridding sec
 
 test:
-	./gridding -i hltau_completo_uv.csv -o datosgrideados -d 0.003 -N 2048 -c 800000 -t 5
+	./gridding -i hltau_completo_uv.csv -o datosgrideados -d 0.003 -N 2048 -c 700000 -t 5
 	./sec
