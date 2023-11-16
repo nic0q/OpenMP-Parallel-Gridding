@@ -13,6 +13,9 @@
     "cmath": "c",
     "*.java": "java",
     "*.html": "html",
-    "math.h": "c"
+    "math.h": "c",
+    "cstdlib": "c",
+    "sstream": "c",
+    "array": "c"
   }
 }
