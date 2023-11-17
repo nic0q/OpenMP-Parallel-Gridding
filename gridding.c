@@ -13,8 +13,10 @@ int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N);
 void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
 
+float* fill_vis(char *vis);
+
 int main(int argc, char *argv[]) {
-  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, vr, vi, wk, uk, vk, fq, fqspeed;
+  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, vr, vi, wk, uk, vk, fq, fqspeed, *vis;
   char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
   int t = 0, c = 0, N = 0, option, j, index, pos, cont = 0, it, dim;
   double t1_p, t2_p;
@@ -77,7 +79,8 @@ int main(int argc, char *argv[]) {
             if (feof(file) != 0) {
               break;
             }
-            fgets(vis_str[j], sizeof(vis_str[j]), file);
+            fgets(buffer, sizeof(buffer), file);
+            strcpy(vis_str[j], buffer);
             if (cont % 500000 == 0) {
               printf("Reading line: %d\n", cont);
             }
@@ -85,13 +88,15 @@ int main(int argc, char *argv[]) {
           }
         } // SC
         for (it = 0; it < c; it++) {
-          sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
+          // sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
+          vis = fill_vis(vis_str[it]);
+          
+          // //printf("%s\n", vis_str[it]);
+          index = grid(vis[0], vis[1], vis[5], deltaU,deltaV ,N);
 
-          index = grid(uk, vk, fq, deltaU,deltaV ,N);
-
-          fr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
-          fi[index] += wk * vi;
-          wt[index] += wk;
+          fr[index] += vis[4] * vis[2];  // acumulate in matrix fr, fi, wt
+          fi[index] += vis[4] * vis[3];
+          wt[index] += vis[4];
         }
       } // while archivo
       } // tasks
@@ -177,7 +182,11 @@ int main(int argc, char *argv[]) {
   write_file("datosgrideados_sharedr.raw", absfr, N * N);
   write_file("datosgrideados_sharedi.raw", absfi, N * N);
 }
-
+float* fill_vis(char *vis) {
+  float* arr = malloc(6 * sizeof(float));
+  sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
+  return arr;
+}
 int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N){
   int index, ik, jk;
   float fqspeed = fq / SPEED_OF_LIGHT;
