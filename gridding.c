@@ -9,16 +9,18 @@
 #define PI   3.14159f
 const float SPEED_OF_LIGHT = 299792458;
 
-int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N);
+void parallel_normalization(float* fr, float* fi, float* wt, int dim);
+void acumulation(float* fr, float* fi, float* wt, int i, float* vis);
 void write_file(char* archive_name, float* pixels, int size);
+int grid(float* vis, float deltaU, float deltaV, int N);
 FILE* open_file(char* nombreArchivo);
 float* line_to_float(char *vis);
 float arcsec_to_rad(float deg);
 
 int main(int argc, char *argv[]) {
-  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, uk, vk, fqspeed;
-  char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
-	int t = 0, c = 0, N = 0, option, ik, jk, index, pos, it, dim;
+  char *input_file_name = NULL, *output_file_name = NULL, str1a[] = "_privater.raw", str1b[] = "_privatei.raw", str2a[] = "_sharedr.raw", str2b[] = "_sharedi.raw";
+  float deltaX = 0.0, deltaU, deltaV, *fr_priv, *fi_priv, *wt_priv, *fr, *fi, *wt;
+	int t = 0, c = 0, N = 0, option, index, k, dim;
   FILE *file_priv, *file_pub;
   double t1_p, t2_p;
 
@@ -60,16 +62,16 @@ int main(int argc, char *argv[]) {
   deltaV = deltaU;
   dim = N * N;
 
-  absfr = calloc(N * N, sizeof(float));
-  absfi = calloc(N * N, sizeof(float));
-  abswt = calloc(N * N, sizeof(float));
+  fr_priv = calloc(dim, sizeof(float));
+  fi_priv = calloc(dim, sizeof(float));
+  wt_priv = calloc(dim, sizeof(float));
 
-  fr = calloc(N * N, sizeof(float));
-  fi = calloc(N * N, sizeof(float));
-  wt = calloc(N * N, sizeof(float));
+  fr = calloc(dim, sizeof(float));
+  fi = calloc(dim, sizeof(float));
+  wt = calloc(dim, sizeof(float));
 
   t1_p = omp_get_wtime();
-  #pragma omp parallel firstprivate(fr, fi, wt, ik, jk, index, uk, vk, fqspeed)
+  #pragma omp parallel firstprivate(fr, fi, wt, index)
   {
     #pragma omp single
 
@@ -81,27 +83,23 @@ int main(int argc, char *argv[]) {
 
           char lines[c][256];
 
-          #pragma omp critical
+          #pragma omp critical // Critical section
 
             for (int j = 0; j < c; j++) {
-
               if (feof(file_priv) != 0)
                 break;
-
-              fgets(buffer, sizeof(buffer), file_priv);
-              strcpy(lines[j], buffer);
+              
+              fgets(lines[j], sizeof(lines[j]), file_priv);
             }
         
-          if(lines[0] != NULL)
-            for (it = 0; it < c; it++) {
+          if(lines[0] != NULL) // Parallel section
+            for (k = 0; k < c; k++) {
             
-              float* vis = line_to_float(lines[it]);
+              float* vis = line_to_float(lines[k]); // vis = {uk, vk, vr, vu, wt frequency}
 
-              index = grid(vis[0], vis[1], vis[5], deltaU, deltaV, N);
+              index = grid(vis, deltaU, deltaV, N);
 
-              fr[index] += vis[4] * vis[2];  // acumulate in matrix fr, fi, wt
-              fi[index] += vis[4] * vis[3];
-              wt[index] += vis[4];
+              acumulation(fr_priv, fi_priv, wt_priv, index, vis);
             }
         }
   
@@ -109,32 +107,36 @@ int main(int argc, char *argv[]) {
 
     #pragma omp for
     for (int i = 0; i < dim; i++) {
-      absfr[i] += fr[i];
-      absfi[i] += fi[i];
-      abswt[i] += wt[i];
+      fr[i] += fr_priv[i];
+      fi[i] += fi_priv[i];
+      wt[i] += wt_priv[i];
     }
 
-    #pragma omp for
-    for (int j = 0; j < dim; j++) {
-      if (abswt[j] != 0) { // /0: -inf
-        absfr[j] = absfr[j] / abswt[j];
-        absfi[j] = absfi[j] / abswt[j];
-      }
-		}
+    parallel_normalization(fr, fi, wt, dim);
   }
   t2_p = omp_get_wtime();
 
   printf("Private matrices time: %f [s]\n", t2_p - t1_p);
 
-  write_file("datosgrideados_privater.raw", absfr, N * N);
-  write_file("datosgrideados_privatei.raw", absfi, N * N);
+  write_file(strcat(output_file_name, str1a), fr, dim);
+  output_file_name[strlen(output_file_name) - strlen(str1a)] = '\0';
+  write_file(strcat(output_file_name, str1b), fi, dim);
+  output_file_name[strlen(output_file_name) - strlen(str1b)] = '\0';
 
-  absfr = calloc(N * N, sizeof(float));
-  absfi = calloc(N * N, sizeof(float));
-  abswt = calloc(N * N, sizeof(float));
+  free(fr_priv);
+  free(fi_priv);
+  free(wt_priv);
+
+  free(fr);
+  free(fi);
+  free(wt);
+
+  fr = calloc(dim, sizeof(float));
+  fi = calloc(dim, sizeof(float));
+  wt = calloc(dim, sizeof(float));
 
   t1_p = omp_get_wtime();
-  #pragma omp parallel firstprivate(ik, jk, index, uk, vk, fqspeed)
+  #pragma omp parallel firstprivate(index)
   {
     #pragma omp single
 
@@ -146,72 +148,43 @@ int main(int argc, char *argv[]) {
 
         char lines[c][256];        
           
-        #pragma omp critical
+        #pragma omp critical // Critical section
 
           for (int j = 0; j < c; j++) {
             if (feof(file_pub) != 0)
               break;
-
-            fgets(buffer, sizeof(buffer), file_pub);
-            strcpy(lines[j], buffer);
+              fgets(lines[j], sizeof(lines[j]), file_pub);
           }
 
-        if(lines[0] != NULL)
-          for (it = 0; it < c; it++) {
-            float* vis = line_to_float(lines[it]);
+        if(lines[0] != NULL) // Parallel section
+          for (k = 0; k < c; k++) {
+            float* vis = line_to_float(lines[k]);
 
-            index = grid(vis[0], vis[1], vis[5], deltaU, deltaV, N);
+            index = grid(vis, deltaU, deltaV, N);
 
             #pragma omp critical
             {
-              absfr[index] += vis[4] * vis[2];  // acumulate in matrices
-              absfi[index] += vis[4] * vis[3];
-              abswt[index] += vis[4];
+              acumulation(fr, fi, wt, index, vis);
             }
           }
       }
   
     #pragma omp taskwait
 
-    #pragma omp for
-    for (int j = 0; j < dim; j++) {
-      if(abswt[j]!=0) {
-        absfr[j] = absfr[j] / abswt[j];
-        absfi[j] = absfi[j] / abswt[j];
-      }
-		}
+    parallel_normalization(fr, fi, wt, dim);
   }
   t2_p = omp_get_wtime();
 
   printf("Shared matrices time: %f [s]\n", t2_p - t1_p);
 
-  write_file("datosgrideados_sharedr.raw", absfr, N * N);
-  write_file("datosgrideados_sharedi.raw", absfi, N * N);
+  write_file(strcat(output_file_name, str2a), fr, dim);
+  output_file_name[strlen(output_file_name) - strlen(str2a)] = '\0';
+  write_file(strcat(output_file_name, str2b), fi, dim);
+  output_file_name[strlen(output_file_name) - strlen(str2b)] = '\0';
 
   free(fr);
   free(fi);
   free(wt);
-  free(absfr);
-  free(absfi);
-  free(abswt);
-}
-
-float* line_to_float(char *vis) {
-  float* arr = calloc(6, sizeof(float));
-  sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
-  return arr;
-}
-
-int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N){
-  float fqspeed = fq / SPEED_OF_LIGHT;
-	int index, ik, jk;
-  uk = uk * fqspeed; // uk
-  vk = vk * fqspeed; // vk
-
-  ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
-  jk = round(vk / deltaV) + (N / 2);
-
-  return ik * N + jk;
 }
 
 float arcsec_to_rad(float deg){  // arcseconds to radians
@@ -238,4 +211,38 @@ void write_file(char* archive_name, float* data, int dim) {
     printf("There was an error while writing the elements.\n");
   }
   fclose(file);
+}
+
+float* line_to_float(char *vis) {
+  float* arr = calloc(6, sizeof(float));
+  sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
+  return arr;
+}
+
+int grid(float* vis, float deltaU, float deltaV, int N) {
+  float fqspeed, uk, vk;
+	int index, ik, jk;
+  fqspeed = vis[5] / SPEED_OF_LIGHT;
+  uk = vis[0] * fqspeed;
+  vk = vis[1] * fqspeed;
+
+  ik = round(uk / deltaU) + (N / 2);
+  jk = round(vk / deltaV) + (N / 2);
+
+  return ik * N + jk;
+}
+
+void parallel_normalization(float* fr, float* fi, float* wt, int dim){
+  #pragma omp for
+  for (int i = 0; i < dim; i++) {
+    if(wt[i]!=0) {
+      fr[i] = fr[i] / wt[i];
+      fi[i] = fi[i] / wt[i];
+    }
+	}
+}
+void acumulation(float* fr, float* fi, float* wt, int i, float* vis){
+  fr[i] += vis[4] * vis[2];  // acumulate in matrices
+  fi[i] += vis[4] * vis[3];
+  wt[i] += vis[4];  
 }
