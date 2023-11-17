@@ -16,7 +16,7 @@ FILE* open_file(char* nombreArchivo);
 float* fill_vis(char *vis);
 
 int main(int argc, char *argv[]) {
-  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, vr, vi, wk, uk, vk, fq, fqspeed, *vis;
+  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt;
   char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
   int t = 0, c = 0, N = 0, option, j, index, pos, cont = 0, it, dim;
   double t1_p, t2_p;
@@ -87,12 +87,20 @@ int main(int argc, char *argv[]) {
             cont++;
           }
         } // SC
+        if(vis_str[0] !=NULL)
         for (it = 0; it < c; it++) {
-          // sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
-          vis = fill_vis(vis_str[it]);
-          
-          // //printf("%s\n", vis_str[it]);
-          index = grid(vis[0], vis[1], vis[5], deltaU,deltaV ,N);
+
+          float* vis = fill_vis(vis_str[it]);
+
+          float fqspeed = vis[5] / SPEED_OF_LIGHT;
+
+          float uk = vis[0] * fqspeed; // uk
+          float vk = vis[1] * fqspeed; // vk
+
+          int ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
+          int jk = round(vk / deltaV) + (N / 2);
+
+          int index = ik * N + jk;
 
           fr[index] += vis[4] * vis[2];  // acumulate in matrix fr, fi, wt
           fi[index] += vis[4] * vis[3];
@@ -138,30 +146,41 @@ int main(int argc, char *argv[]) {
       #pragma omp task untied
       {
       while(feof(file2) == 0) {
-        char vis_str[c][256];
+        char vis_str[c][256];        
         #pragma omp critical // SC
         {
+          char buffer[256];
           for (int j = 0; j < c; j++) {
             if (feof(file2) != 0) {
               break;
             }
-            fgets(vis_str[j], sizeof(vis_str[j]), file2);
+            fgets(buffer, sizeof(buffer), file2);
+            strcpy(vis_str[j], buffer);
             if (cont % 500000 == 0) {
               printf("Reading line: %d\n", cont);
             }
             cont++;
           }
         } // SC
+        if(vis_str[0] !=NULL)
         for (it = 0; it < c; it++) {
-          sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
+          float* vis = fill_vis(vis_str[it]);
 
-          index = grid(uk, vk, fq, deltaU,deltaV ,N);
+          float fqspeed = vis[5] / SPEED_OF_LIGHT;
 
+          float uk = vis[0] * fqspeed; // uk
+          float vk = vis[1] * fqspeed; // vk
+
+          int ik = round(uk / deltaU) + (N / 2);  // i,j coordinate
+          int jk = round(vk / deltaV) + (N / 2);
+
+          int index = ik * N + jk;
+          
           #pragma omp critical
           {
-            absfr[index] += wk * vr;  // acumulate in matrices
-            absfi[index] += wk * vi;
-            abswt[index] += wk;
+            absfr[index] += vis[4] * vis[2];  // acumulate in matrices
+            absfi[index] += vis[4] * vis[3];
+            abswt[index] += vis[4];
           }
         }
       } // while archivo
@@ -183,7 +202,7 @@ int main(int argc, char *argv[]) {
   write_file("datosgrideados_sharedi.raw", absfi, N * N);
 }
 float* fill_vis(char *vis) {
-  float* arr = malloc(6 * sizeof(float));
+  float* arr = calloc(6, sizeof(float));
   sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
   return arr;
 }
