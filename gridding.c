@@ -9,13 +9,13 @@
 
 const float SPEED_OF_LIGHT = 299792458;
 float arcsec_to_rad(float deg);
-int grid(float uk, float vk, float wk, float fq, float deltaU, float deltaV, int N);
+int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N);
 void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
 
 int main(int argc, char *argv[]) {
-  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, vr, vi, wk, uk, vk, fq;
-  char buffer[200], *input_file_name = NULL, *output_file_name = NULL;
+  float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, vr, vi, wk, uk, vk, fq, fqspeed;
+  char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
   int t = 0, c = 0, N = 0, option, j, index, pos, cont = 0, it, dim;
   double t1_p, t2_p;
 
@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
         abort();
     }
   }
-
+  printf("%d %d %d %f\n", N, c, t, deltaX);
   FILE* file = open_file(input_file_name);
   FILE* file2 = open_file(input_file_name);
 
@@ -61,10 +61,6 @@ int main(int argc, char *argv[]) {
   fi = calloc(N * N, sizeof(float));
   wt = calloc(N * N, sizeof(float));
 
-  char** vis_str = (char **)malloc(c * sizeof(char *));
-  for (int i = 0; i < c; i++) {
-    vis_str[i] = (char *)malloc(200 * sizeof(char)); // +1 para el carácter nulo
-  }
   t1_p = omp_get_wtime();
   #pragma omp parallel firstprivate(fr, fi, wt)
   {
@@ -74,27 +70,25 @@ int main(int argc, char *argv[]) {
       #pragma omp task untied
       {
       while (feof(file) == 0) {
+        char vis_str[c][256];
         #pragma omp critical // SC
         {
           for (int j = 0; j < c; j++) {
             if (feof(file) != 0) {
               break;
             }
-            fgets(buffer, sizeof(buffer), file);
-            strcpy(vis_str[j], buffer);
+            fgets(vis_str[j], sizeof(vis_str[j]), file);
             if (cont % 500000 == 0) {
               printf("Reading line: %d\n", cont);
             }
             cont++;
           }
         } // SC
-        printf("%d ", cont);
-        
         for (it = 0; it < c; it++) {
           sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
 
-          index = grid(uk, vk, wk, fq, deltaU, deltaV, N);
-          
+          index = grid(uk, vk, fq, deltaU,deltaV ,N);
+
           fr[index] += wk * vr;  // acumulate in matrix fr, fi, wt
           fi[index] += wk * vi;
           wt[index] += wk;
@@ -113,8 +107,8 @@ int main(int argc, char *argv[]) {
   #pragma omp for
   for (int j = 0; j < dim; j++) {
     if (abswt[j] != 0) { // /0: -inf
-      absfr[j] /= abswt[j];
-      absfi[j] /= abswt[j];
+      absfr[j] = absfr[j] / abswt[j];
+      absfi[j] = absfi[j] / abswt[j];
     }
   }
   } // Parallel
@@ -124,73 +118,69 @@ int main(int argc, char *argv[]) {
   write_file("datosgrideados_privater.raw", absfr, N * N);
   write_file("datosgrideados_privatei.raw", absfi, N * N);
 
-  // absfr = calloc(N * N, sizeof(float));
-  // absfi = calloc(N * N, sizeof(float));
-  // abswt = calloc(N * N, sizeof(float));
+  absfr = calloc(N * N, sizeof(float));
+  absfi = calloc(N * N, sizeof(float));
+  abswt = calloc(N * N, sizeof(float));
 
-  // cont = 0;
+  cont = 0;
 
-  // t1_p = omp_get_wtime();
-  // #pragma omp parallel
-  //   {
-  //   #pragma omp single
-  //   {
-  //   for (int i = 0; i < t; i++){
-  //     #pragma omp task untied
-  //     {
-  //     while(feof(file2) == 0) {
-  //       float* vis = calloc(c * 6, sizeof(float));
-  //       #pragma omp critical
-  //       for (int j = 0; j < c; j++) {
-  //         if(feof(file2) != 0){     // Si se llegó al final del archivo mientras se esta leyendo lineas del chunk, se sale del ciclo
-  //           break;
-  //         }
-  //         fgets(buffer,sizeof(buffer),file2);
-  //         pos = j * 6;
-  //         // sscanf(buffer, "%f,%f,%*f,%f,%f,%f,%f,%*f", &vis[pos], &vis[pos+1], &vis[pos+2], &vis[pos+3], &vis[pos+4], &vis[pos+5]);
-  //         vis[0] = 4;
-  //         if(cont % 500000 == 0){
-  //           printf("Reading line: %d\n", cont);
-  //         }
-  //         cont++;
-  //       }
-  //       if(vis[0] != 0.0)
-  //       for(it = 0; it < c; it++){
-  //         vr = vis[it * 6 + 2]; // parte real
-  //         vi = vis[it * 6 + 3]; // parte im
-  //         wk = vis[it * 6 + 4]; // peso
+  t1_p = omp_get_wtime();
+  #pragma omp parallel
+    {
+    #pragma omp single
+    {
+    for (int i = 0; i < t; i++){
+      #pragma omp task untied
+      {
+      while(feof(file2) == 0) {
+        char vis_str[c][256];
+        #pragma omp critical // SC
+        {
+          for (int j = 0; j < c; j++) {
+            if (feof(file2) != 0) {
+              break;
+            }
+            fgets(vis_str[j], sizeof(vis_str[j]), file2);
+            if (cont % 500000 == 0) {
+              printf("Reading line: %d\n", cont);
+            }
+            cont++;
+          }
+        } // SC
+        for (it = 0; it < c; it++) {
+          sscanf(vis_str[it], "%f,%f,%*f,%f,%f,%f,%f,%*f", &uk, &vk, &vr, &vi, &wk, &fq);
 
-  //         index = grid(it, vis, deltaU, deltaV, N);
-  //         #pragma omp critical
-  //         {
-  //           absfr[index] += wk * vr;  // acumulate in matrices
-  //           absfi[index] += wk * vi;
-  //           abswt[index] += wk;
-  //         }
-  //       }
-  //     } // while archivo
-  //     } // task
-  //   } // for tasks
-  // } // single
-  // #pragma omp taskwait
-  // #pragma omp for
-  // for (int j = 0; j < dim; j++)
-  //   if(abswt[j]!=0){
-  //     absfr[j] = absfr[j] / abswt[j];
-  //     absfi[j] = absfi[j] / abswt[j];
-  //   }
-  // } // Parallel
-  // t2_p = omp_get_wtime();
-  // printf("Shared matrices time: %f [s]\n", t2_p - t1_p);
+          index = grid(uk, vk, fq, deltaU,deltaV ,N);
 
-  // write_file("datosgrideados_sharedr.raw", absfr, N * N);
-  // write_file("datosgrideados_sharedi.raw", absfi, N * N);
+          #pragma omp critical
+          {
+            absfr[index] += wk * vr;  // acumulate in matrices
+            absfi[index] += wk * vi;
+            abswt[index] += wk;
+          }
+        }
+      } // while archivo
+      } // task
+    } // for tasks
+  } // single
+  #pragma omp taskwait
+  #pragma omp for
+  for (int j = 0; j < dim; j++)
+    if(abswt[j]!=0){
+      absfr[j] = absfr[j] / abswt[j];
+      absfi[j] = absfi[j] / abswt[j];
+    }
+  } // Parallel
+  t2_p = omp_get_wtime();
+  printf("Shared matrices time: %f [s]\n", t2_p - t1_p);
+
+  write_file("datosgrideados_sharedr.raw", absfr, N * N);
+  write_file("datosgrideados_sharedi.raw", absfi, N * N);
 }
 
-int grid(float uk, float vk, float wk, float fq, float deltaU, float deltaV, int N){
+int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N){
   int index, ik, jk;
-  float fqspeed;
-  fqspeed = fq / SPEED_OF_LIGHT;
+  float fqspeed = fq / SPEED_OF_LIGHT;
   uk = uk * fqspeed; // uk
   vk = vk * fqspeed; // vk
 
