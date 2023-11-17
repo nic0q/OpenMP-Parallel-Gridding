@@ -5,20 +5,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#define _USE_MATH_DEFINES
 
+#define PI   3.14159f
 const float SPEED_OF_LIGHT = 299792458;
-float arcsec_to_rad(float deg);
+
 int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N);
 void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
-
-float* fill_vis(char *vis);
+float* line_to_float(char *vis);
+float arcsec_to_rad(float deg);
 
 int main(int argc, char *argv[]) {
   float deltaX = 0.0, deltaU, deltaV, *absfr, *absfi, *abswt, *fr, *fi, *wt, uk, vk, fqspeed;
-  int t = 0, c = 0, N = 0, option, ik, jk, index, pos, cont = 0, it, dim;
   char buffer[256], *input_file_name = NULL, *output_file_name = NULL;
+	int t = 0, c = 0, N = 0, option, ik, jk, index, pos, it, dim;
   FILE *file_priv, *file_pub;
   double t1_p, t2_p;
 
@@ -90,16 +90,12 @@ int main(int argc, char *argv[]) {
 
               fgets(buffer, sizeof(buffer), file_priv);
               strcpy(lines[j], buffer);
-
-              if (cont % 500000 == 0)
-                printf("Reading line %d\n", cont);
-              cont++;
             }
         
           if(lines[0] != NULL)
             for (it = 0; it < c; it++) {
             
-              float* vis = fill_vis(lines[it]);
+              float* vis = line_to_float(lines[it]);
 
               index = grid(vis[0], vis[1], vis[5], deltaU, deltaV, N);
 
@@ -126,7 +122,6 @@ int main(int argc, char *argv[]) {
       }
 		}
   }
-
   t2_p = omp_get_wtime();
 
   printf("Private matrices time: %f [s]\n", t2_p - t1_p);
@@ -137,8 +132,6 @@ int main(int argc, char *argv[]) {
   absfr = calloc(N * N, sizeof(float));
   absfi = calloc(N * N, sizeof(float));
   abswt = calloc(N * N, sizeof(float));
-
-  cont = 0;
 
   t1_p = omp_get_wtime();
   #pragma omp parallel firstprivate(ik, jk, index, uk, vk, fqspeed)
@@ -161,15 +154,11 @@ int main(int argc, char *argv[]) {
 
             fgets(buffer, sizeof(buffer), file_pub);
             strcpy(lines[j], buffer);
-
-            if (cont % 500000 == 0)
-              printf("Reading line %d\n", cont);
-            cont++;
           }
 
         if(lines[0] != NULL)
           for (it = 0; it < c; it++) {
-            float* vis = fill_vis(lines[it]);
+            float* vis = line_to_float(lines[it]);
 
             index = grid(vis[0], vis[1], vis[5], deltaU, deltaV, N);
 
@@ -207,15 +196,15 @@ int main(int argc, char *argv[]) {
   free(abswt);
 }
 
-float* fill_vis(char *vis) {
+float* line_to_float(char *vis) {
   float* arr = calloc(6, sizeof(float));
   sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
   return arr;
 }
 
 int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N){
-  int index, ik, jk;
   float fqspeed = fq / SPEED_OF_LIGHT;
+	int index, ik, jk;
   uk = uk * fqspeed; // uk
   vk = vk * fqspeed; // vk
 
@@ -226,7 +215,7 @@ int grid(float uk, float vk, float fq, float deltaU, float deltaV, int N){
 }
 
 float arcsec_to_rad(float deg){  // arcseconds to radians
-  return deg * M_PI / (180 * 3600);
+  return deg * PI / (180 * 3600);
 }
 
 FILE* open_file(char* file_name) {
@@ -250,4 +239,3 @@ void write_file(char* archive_name, float* data, int dim) {
   }
   fclose(file);
 }
-

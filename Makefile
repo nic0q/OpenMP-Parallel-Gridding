@@ -1,4 +1,4 @@
-all: gridding sec test
+all: gridding sec
 
 gridding:
 	gcc gridding.c -fopenmp -lm -o gridding

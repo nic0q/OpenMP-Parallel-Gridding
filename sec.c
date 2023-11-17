@@ -2,13 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#define _USE_MATH_DEFINES
 #include <math.h>
-#include <time.h> // clock
+#include <time.h>
+#define PI 3.14159f
+
 const float SPEED_OF_LIGHT = 299792458;
-float arcsec_to_rad(float deg);
+
 void write_file(char* archive_name, float* pixels, int size);
 FILE* open_file(char* nombreArchivo);
+float arcsec_to_rad(float deg);
 
 int main(int argc, char *argv[]) {
   char buffer[256];
@@ -17,7 +19,6 @@ int main(int argc, char *argv[]) {
 
   float uk, vk, vr, vi, wk, fq, fqspeed, deltaU, deltaV, deltaX = 0.003, *fr, *fi, *wt;
   int ik, jk, N = 2048, index;
-  int cont = 0;
   clock_t start_s, end_s;
   double t_s;
 
@@ -46,11 +47,6 @@ int main(int argc, char *argv[]) {
     fr[index] += wk * vr;
     fi[index] += wk * vi;
     wt[index] += wk;
-
-    if(cont % 500000 == 0){
-      printf("Reading line: %d\n", cont);
-    }
-    cont++;
   }
   for (int w = 0; w < N * N; w++){
     if(wt[w] != 0){
@@ -68,8 +64,9 @@ int main(int argc, char *argv[]) {
 }
 
 float arcsec_to_rad(float deg){  // arcseconds to radians
-  return deg * M_PI / (180 * 3600);
+  return deg * PI / (180 * 3600);
 }
+
 void write_file(char* archive_name, float* data, int dim) {
   FILE* file;
   file = fopen(archive_name, "wb");
@@ -83,11 +80,12 @@ void write_file(char* archive_name, float* data, int dim) {
 
   fclose(file);
 }
+
 FILE* open_file(char* file_name) {
-    FILE* file = fopen(file_name, "r");
-    if (file == NULL) {
-        perror("There was an error opening the file");
-        return NULL;
-    }
-    return file;
+  FILE* file = fopen(file_name, "r");
+  if (file == NULL) {
+    perror("There was an error opening the file");
+    return NULL;
+  }
+  return file;
 }

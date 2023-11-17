@@ -16,6 +16,7 @@
     "math.h": "c",
     "cstdlib": "c",
     "sstream": "c",
-    "array": "c"
+    "array": "c",
+    "time.h": "c"
   }
 }
