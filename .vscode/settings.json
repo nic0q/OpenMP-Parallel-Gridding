@@ -17,6 +17,7 @@
     "cstdlib": "c",
     "sstream": "c",
     "array": "c",
-    "time.h": "c"
+    "time.h": "c",
+    "random": "c"
   }
 }

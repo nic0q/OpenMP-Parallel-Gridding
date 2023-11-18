@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
 
   printf("Chunk size: %d\nNumber of tasks: %d\n", c, t);
   deltaU = 1 / (N * arcsec_to_rad(deltaX));  // to radians
-  deltaV = deltaU;
+  deltaV = deltaU; // deltaU = deltaV
   dim = N * N;
 
   fr_priv = calloc(dim, sizeof(float));
@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
   fr = calloc(dim, sizeof(float));
   fi = calloc(dim, sizeof(float));
   wt = calloc(dim, sizeof(float));
+
+  
 
   t1_p = omp_get_wtime();
   #pragma omp parallel firstprivate(fr, fi, wt, index)
@@ -91,10 +93,10 @@ int main(int argc, char *argv[]) {
               if (feof(file_priv) != 0)
                 break;
               
-              lines[j] = (char*) malloc(256 * sizeof(char));
-              fgets(lines[j], 200 * sizeof(char), file_priv);
+              lines[j] = (char*) calloc(256, sizeof(char));
+              fgets(lines[j], 256 * sizeof(char), file_priv);
             }
-
+          if(lines != NULL)
           if(lines[0] != NULL)
             for (k = 0; k < c; k++) {
 
@@ -134,12 +136,13 @@ int main(int argc, char *argv[]) {
   free(fi);
   free(wt);
 
-  fclose(file_pub);
+  fclose(file_priv);
 
   fr = calloc(N * N, sizeof(float));
   fi = calloc(N * N, sizeof(float));
   wt = calloc(N * N, sizeof(float));
-
+  
+  
   t1_p = omp_get_wtime();
   #pragma omp parallel firstprivate(index)
   {
@@ -149,7 +152,9 @@ int main(int argc, char *argv[]) {
   
       #pragma omp task untied
       {
-        char** lines = (char**) calloc(c, sizeof(char*));
+
+        char** linesw = (char**) calloc(c, sizeof(char*));
+
         while(feof(file_pub) == 0) {
         
           #pragma omp critical // Critical section
@@ -158,14 +163,14 @@ int main(int argc, char *argv[]) {
               if (feof(file_pub) != 0)
                 break;
 
-              lines[j] = (char*) calloc(256, sizeof(char));
-              fgets(lines[j], 256 * sizeof(char), file_pub);
+              linesw[j] = (char*) calloc(256, sizeof(char));
+              fgets(linesw[j], 256 * sizeof(char), file_pub);
             }
-
-          if(lines[0] != NULL)
+          if(linesw != NULL)
+          if(linesw[0] != NULL)
             for (k = 0; k < c; k++) {
 
-              float* vis = line_to_float(lines[k]);
+              float* vis = line_to_float(linesw[k]);
             
               index = grid(vis, deltaU, deltaV, N);
 
@@ -194,7 +199,7 @@ int main(int argc, char *argv[]) {
   free(fi);
   free(wt);
 
-  fclose(file_priv);
+  fclose(file_pub);
 }
 
 float arcsec_to_rad(float deg){  // arcseconds to radians
