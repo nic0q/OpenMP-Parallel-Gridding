@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define PI   3.14159f
+#define PI 3.14159f
 const float SPEED_OF_LIGHT = 299792458;
 
 void parallel_normalization(float* fr, float* fi, float* wt, int dim);
@@ -18,7 +18,7 @@ float* line_to_float(char *vis);
 float arcsec_to_rad(float deg);
 
 int main(int argc, char *argv[]) {
-  char *input_file_name = NULL, *output_file_name = NULL, str1a[] = "_privater.raw", str1b[] = "_privatei.raw", str2a[] = "_sharedr.raw", str2b[] = "_sharedi.raw";
+  char buffer[256], *input_file_name = NULL, *output_file_name = NULL, str1a[] = "_privater.raw", str1b[] = "_privatei.raw", str2a[] = "_sharedr.raw", str2b[] = "_sharedi.raw";
   float deltaX = 0.0, deltaU, deltaV, *fr_priv, *fi_priv, *wt_priv, *fr, *fi, *wt;
 	int t = 0, c = 0, N = 0, option, index, k, dim;
   FILE *file_priv, *file_pub;
@@ -54,10 +54,12 @@ int main(int argc, char *argv[]) {
   if (file_priv == NULL) {
     return -1;
   }
+
   if (file_pub == NULL) {
     return -1;
   }
 
+  printf("Chunk size: %d\nNumber of tasks: %d\n", c, t);
   deltaU = 1 / (N * arcsec_to_rad(deltaX));  // to radians
   deltaV = deltaU;
   dim = N * N;
@@ -78,10 +80,10 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < t; i++)
 
       #pragma omp task untied
+      {
+        char** lines = (char**) calloc(c, sizeof(char*));
 
         while (feof(file_priv) == 0) {
-
-          char lines[c][256];
 
           #pragma omp critical // Critical section
 
@@ -89,12 +91,13 @@ int main(int argc, char *argv[]) {
               if (feof(file_priv) != 0)
                 break;
               
-              fgets(lines[j], sizeof(lines[j]), file_priv);
+              lines[j] = (char*) malloc(256 * sizeof(char));
+              fgets(lines[j], 200 * sizeof(char), file_priv);
             }
-        
-          if(lines[0] != NULL) // Parallel section
+
+          if(lines[0] != NULL)
             for (k = 0; k < c; k++) {
-            
+
               float* vis = line_to_float(lines[k]); // vis = {uk, vk, vr, vu, wt frequency}
 
               index = grid(vis, deltaU, deltaV, N);
@@ -102,7 +105,7 @@ int main(int argc, char *argv[]) {
               acumulation(fr_priv, fi_priv, wt_priv, index, vis);
             }
         }
-  
+      }
     #pragma omp taskwait
 
     #pragma omp for
@@ -131,9 +134,11 @@ int main(int argc, char *argv[]) {
   free(fi);
   free(wt);
 
-  fr = calloc(dim, sizeof(float));
-  fi = calloc(dim, sizeof(float));
-  wt = calloc(dim, sizeof(float));
+  fclose(file_pub);
+
+  fr = calloc(N * N, sizeof(float));
+  fi = calloc(N * N, sizeof(float));
+  wt = calloc(N * N, sizeof(float));
 
   t1_p = omp_get_wtime();
   #pragma omp parallel firstprivate(index)
@@ -143,35 +148,38 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < t; i++)
   
       #pragma omp task untied
+      {
+        char** lines = (char**) calloc(c, sizeof(char*));
+        while(feof(file_pub) == 0) {
+        
+          #pragma omp critical // Critical section
 
-      while(feof(file_pub) == 0) {
+            for (int j = 0; j < c; j++) {
+              if (feof(file_pub) != 0)
+                break;
 
-        char lines[c][256];        
-          
-        #pragma omp critical // Critical section
-
-          for (int j = 0; j < c; j++) {
-            if (feof(file_pub) != 0)
-              break;
-              fgets(lines[j], sizeof(lines[j]), file_pub);
-          }
-
-        if(lines[0] != NULL) // Parallel section
-          for (k = 0; k < c; k++) {
-            float* vis = line_to_float(lines[k]);
-
-            index = grid(vis, deltaU, deltaV, N);
-
-            #pragma omp critical
-            {
-              acumulation(fr, fi, wt, index, vis);
+              lines[j] = (char*) calloc(256, sizeof(char));
+              fgets(lines[j], 256 * sizeof(char), file_pub);
             }
-          }
+
+          if(lines[0] != NULL)
+            for (k = 0; k < c; k++) {
+
+              float* vis = line_to_float(lines[k]);
+            
+              index = grid(vis, deltaU, deltaV, N);
+
+              #pragma omp critical
+
+                acumulation(fr, fi, wt, index, vis);
+            }
+        }
       }
   
     #pragma omp taskwait
 
     parallel_normalization(fr, fi, wt, dim);
+
   }
   t2_p = omp_get_wtime();
 
@@ -185,6 +193,8 @@ int main(int argc, char *argv[]) {
   free(fr);
   free(fi);
   free(wt);
+
+  fclose(file_priv);
 }
 
 float arcsec_to_rad(float deg){  // arcseconds to radians
@@ -214,7 +224,7 @@ void write_file(char* archive_name, float* data, int dim) {
 }
 
 float* line_to_float(char *vis) {
-  float* arr = calloc(6, sizeof(float));
+  float* arr = malloc(6 * sizeof(float));
   sscanf(vis, "%f,%f,%*f,%f,%f,%f,%f,%*f", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
   return arr;
 }
@@ -241,8 +251,9 @@ void parallel_normalization(float* fr, float* fi, float* wt, int dim){
     }
 	}
 }
+
 void acumulation(float* fr, float* fi, float* wt, int i, float* vis){
-  fr[i] += vis[4] * vis[2];  // acumulate in matrices
+  fr[i] += vis[4] * vis[2];
   fi[i] += vis[4] * vis[3];
   wt[i] += vis[4];  
 }
