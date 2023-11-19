@@ -18,9 +18,9 @@ float* line_to_float(char *vis);
 float arcsec_to_rad(float deg);
 
 int main(int argc, char *argv[]) {
-  char buffer[256], *input_file_name = NULL, *output_file_name = NULL, str1a[] = "_privater.raw", str1b[] = "_privatei.raw", str2a[] = "_sharedr.raw", str2b[] = "_sharedi.raw";
+  char *input_file_name = NULL, *output_file_name = NULL, str1a[] = "_privater.raw", str1b[] = "_privatei.raw", str2a[] = "_sharedr.raw", str2b[] = "_sharedi.raw";
   float deltaX = 0.0, deltaU, deltaV, *fr_priv, *fi_priv, *wt_priv, *fr, *fi, *wt;
-	int t = 0, c = 0, N = 0, option, index, k, dim;
+	int t = 0, c = 0, N = 0, option, k, dim;
   FILE *file_priv, *file_pub;
   double t1_p, t2_p;
 
@@ -72,10 +72,8 @@ int main(int argc, char *argv[]) {
   fi = calloc(dim, sizeof(float));
   wt = calloc(dim, sizeof(float));
 
-  
-
   t1_p = omp_get_wtime();
-  #pragma omp parallel firstprivate(fr, fi, wt, index)
+  #pragma omp parallel firstprivate(fr, fi, wt)
   {
     #pragma omp single
 
@@ -96,13 +94,13 @@ int main(int argc, char *argv[]) {
               lines[j] = (char*) calloc(256, sizeof(char));
               fgets(lines[j], 256 * sizeof(char), file_priv);
             }
-          if(lines != NULL)
-          if(lines[0] != NULL)
+
+          if(lines != NULL && lines[0] != NULL) // Parallel section
             for (k = 0; k < c; k++) {
 
-              float* vis = line_to_float(lines[k]); // vis = {uk, vk, vr, vu, wt frequency}
+              float* vis = line_to_float(lines[k]); // vis = {uk, vk, vr, vi, wt frequency}
 
-              index = grid(vis, deltaU, deltaV, N);
+              int index = grid(vis, deltaU, deltaV, N);
 
               acumulation(fr_priv, fi_priv, wt_priv, index, vis);
             }
@@ -125,6 +123,7 @@ int main(int argc, char *argv[]) {
 
   write_file(strcat(output_file_name, str1a), fr, dim);
   output_file_name[strlen(output_file_name) - strlen(str1a)] = '\0';
+
   write_file(strcat(output_file_name, str1b), fi, dim);
   output_file_name[strlen(output_file_name) - strlen(str1b)] = '\0';
 
@@ -141,10 +140,9 @@ int main(int argc, char *argv[]) {
   fr = calloc(N * N, sizeof(float));
   fi = calloc(N * N, sizeof(float));
   wt = calloc(N * N, sizeof(float));
-  
-  
+
   t1_p = omp_get_wtime();
-  #pragma omp parallel firstprivate(index)
+  #pragma omp parallel
   {
     #pragma omp single
 
@@ -152,8 +150,7 @@ int main(int argc, char *argv[]) {
   
       #pragma omp task untied
       {
-
-        char** linesw = (char**) calloc(c, sizeof(char*));
+        char** lines = (char**) calloc(c, sizeof(char*));
 
         while(feof(file_pub) == 0) {
         
@@ -163,16 +160,16 @@ int main(int argc, char *argv[]) {
               if (feof(file_pub) != 0)
                 break;
 
-              linesw[j] = (char*) calloc(256, sizeof(char));
-              fgets(linesw[j], 256 * sizeof(char), file_pub);
+              lines[j] = (char*) calloc(256, sizeof(char));
+              fgets(lines[j], 256 * sizeof(char), file_pub);
             }
-          if(linesw != NULL)
-          if(linesw[0] != NULL)
+
+          if(lines != NULL && lines[0] != NULL) // Parallel section
             for (k = 0; k < c; k++) {
 
-              float* vis = line_to_float(linesw[k]);
+              float* vis = line_to_float(lines[k]); // vis = {uk, vk, vr, vi, wt frequency}
             
-              index = grid(vis, deltaU, deltaV, N);
+              int index = grid(vis, deltaU, deltaV, N);
 
               #pragma omp critical
 
@@ -192,6 +189,7 @@ int main(int argc, char *argv[]) {
 
   write_file(strcat(output_file_name, str2a), fr, dim);
   output_file_name[strlen(output_file_name) - strlen(str2a)] = '\0';
+
   write_file(strcat(output_file_name, str2b), fi, dim);
   output_file_name[strlen(output_file_name) - strlen(str2b)] = '\0';
 
@@ -250,7 +248,7 @@ int grid(float* vis, float deltaU, float deltaV, int N) {
 void parallel_normalization(float* fr, float* fi, float* wt, int dim){
   #pragma omp for
   for (int i = 0; i < dim; i++) {
-    if(wt[i]!=0) {
+    if(wt[i] != 0) {
       fr[i] = fr[i] / wt[i];
       fi[i] = fi[i] / wt[i];
     }
@@ -258,7 +256,7 @@ void parallel_normalization(float* fr, float* fi, float* wt, int dim){
 }
 
 void acumulation(float* fr, float* fi, float* wt, int i, float* vis){
-  fr[i] += vis[4] * vis[2];
-  fi[i] += vis[4] * vis[3];
-  wt[i] += vis[4];  
+  fr[i] += vis[4] * vis[2]; // wk * vr
+  fi[i] += vis[4] * vis[3]; // wk * vi
+  wt[i] += vis[4];  // wk
 }
